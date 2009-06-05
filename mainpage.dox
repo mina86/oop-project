@@ -1,0 +1,668 @@
+/*
+ * Project Documentation Main Page
+ * $Id: mainpage.dox,v 1.4 2006/12/06 20:31:43 mina86 Exp $
+ * Copyright 2006 by Michal Nazarewicz (mina86/AT/mina86.com)
+ * Licensed under the Academic Free License version 2.1
+ */
+
+/**
+
+\mainpage PROBE: Projekt 3.: Relacje binarne
+
+\section zalozenia Założenia wstępne
+
+Napisać klasę reprezentująca relację binarną pomiędzy elementami
+dowolnego typu. Klasa powinna umożliwiać (wraz z przeciążeniem
+odpowiednich operatorów) operacja dodawania i usuwania relacji,
+łączenia i odejmowania relacji, wyznaczania części wspólnej relacji i
+rzecz jasna sprawdzania czy dane dwa elementy są w relacji.  Ponadto
+klasa powinna posiadać metody umożliwiające sprawdzanie czy relacja
+jest zwrotna, symetryczna, przechodnia, równoważności,
+antysymetryczna, częściowego porządku, liniowego porządku.
+
+Implementacja powinna nadzorować zużycie pamięci w ten sposób, by dwa
+obiekty o tych samych wartościach przechowywane były jako pojedynczy
+obiekt w pamięci.
+
+Błędy podczas wykonywania operacji na relacjach powinny być
+obsługiwane na drodze wyjątków.
+
+
+\section realizacja Realizacja
+
+Realizacją założeń jest szablon klasy \link mina86::Relation Relation
+\endlink, który jako argumenty bierze typ danych dziedziny i
+przeciwdziedziny oraz struktury służące do porównywania danych typów
+(<i>compare policy</i> lub <i>trait</i>).  Użycie <i>compare
+policy</i> umożliwia uniezależnienie szablonu od sposobu w jaki
+elementy danego typu powinny być porównywane, np. zwykły operator
+porównania nie zadziała dla wartości typu \c double.
+
+Klasa \link mina86::Relation Relation\endlink zawiera w sobie trzy
+klasy \link mina86::Set Set\endlink - zbiór elementów dziedziny
+relacji, zbiór elementów przeciwdziedziny relacji oraz zbiór elementów
+grafu relacji.  Szablon \link mina86::Set Set\endlink umożliwia
+reprezentowanie zbioru danych dowolnego typu wraz z implementacją
+podstawowych operacji na zbiorach takich jak sumowanie, odejmowanie,
+przecinanie i wyliczanie różnicy symetrycznej.  Zbiór elementów grafu
+relacji zawiera obiekty klasy \link mina86::Pair Pair\endlink, który
+to szablon reprezentuje uporządkowaną parę.
+
+Klasa \link mina86::Set Set\endlink zawiera klasę \link mina86::Array
+Array\endlink, która jest implementacją tablicy o dynamicznym
+rozmiarze, tj. tablicy, która zmienia swój rozmiar zależnie od liczby
+elementów.  W klasie tej zaimplementowano technikę
+<i>copy-on-write</i> tj. przypisanie jednemu elementowi wartości
+drugiego nie powoduje kopiowania całej tablicy.  Elementy są kopiowane
+dopiero w momencie modyfikacji tablicy.
+
+Podstawowe operacje na relacji zostały zaimplementowane w klasie \link
+mina86::Relation Relation\endlink po prostu delegując rządnie do
+klasy \link mina86::Set Set\endlink (konkretnie do grafu relacji,
+który jest reprezentowany przez zbiór par uporządkowanych).
+
+
+\section algorytmy Użyte algorytmy
+
+\subsection alg_array Klasa Array
+
+Istnieją dwa mechanizmy wzrostu tablicy dynamicznej, gdy brakuje już
+miejsca: powiększanie rozmiaru o jakiś kwant lub powiększanie rozmiaru
+daną liczbę razu.  Rozważmy ile operacji kopiowania (\a M) będzie
+trzeba wykonać, przy próbie dodania do tablicy \a N elementów
+zakładając, że \a N przewyższa znacznie początkowy rozmiar tablicy.
+
+W przypadku powiększania o \a e elementów operacja powiększania
+tablicy wykonuje się \f$ m = N / e \f$ razy i mamy:
+
+\f[
+M = \sum_{i=1}^m e i = e \frac{m(m-1)}{2} =
+    \frac e2 \frac Ne \Big(\frac Ne -1\Big) =
+    \frac{N^2}{2e} - \frac N2 = O(N^2)  \nonumber
+\f]
+
+W przypadku powiększania \a q razy operacja powiększania wykonuje się
+\f$ m = \log_q N \f$ razy i mamy:
+
+\f[
+M = \sum_{i=1}^m q^i = \frac{1 - q^m}{1-q} =
+    \frac{1-q^{\log_q N}}{1-q} = \frac{1-N}{1-q} = O(N)
+\f]
+
+Wynika stąd, że użycie metody powiększania o kwant jest wysoce
+nieefektywne jeśli chodzi o szybkość działania (choć bardziej
+oszczędne jeśli chodzi o zużycie pamięci) i z tego powodu w
+implementacji przyjęta została metoda powiększania rozmiaru 1,5 razy.
+
+
+\subsection alg_set Klasa Set
+
+W klasie \link mina86::Set Set\endlink elementy przechowywane są w
+tablicy dynamicznej w porządku liniowym, dzięki czemu w celu
+sprawdzenia istnienia elementu można użyć algorytmu wyszukiwania
+binarnego, którego złożoność to <code>O(log N)</code>.  W przypadku
+braku sortowania konieczne by było użycie wyszukiwania binarnego co
+zwiększa złożoność wyszukiwania do <code>O(N)</code>.  W obu
+przypadkach wstawianie i usuwanie elementów ma złożoność
+<code>O(N)</code> (przy sortowaniu mamy <code>O(log N)</code> czas
+potrzebny na sprawdzenie, czy element istnieje i <code>O(N)</code> na
+dodanie/usunięcie go do tablicy; przy braku sortowania mamy
+<code>O(N)</code> czas potrzebny na wyszukanie elementu i
+<code>O(1)</code> potrzebny na dodanie/usunięcie).
+
+Dodawanie, odejmowanie, przecinanie oraz wyliczanie różnicy
+symetrycznej zbiorów ma złożoność <code>O(N+M)</code>, gdzie \a N to
+liczba elementów pierwszego, a \a M - drugiego zbioru.  W przypadku
+braku sortowania operacje te miałyby złożoność <code>O(MN)</code>.
+Oto algorytmy:
+
+\verbatim
+DEFINICJA X.znajdź_element(e):
+  od := 0
+  do := |X|
+  DOPÓKI od < do WYKONUJ
+    środek := (od + do) / 2
+    JEŻELI X[środek] = e
+      ZWRÓĆ (prawda, środek)
+    WPP JEŻELI X[środek] > e
+      do := środek
+    WPP
+      od := środek + 1
+  ZWRÓĆ (fałsz, od)
+
+
+DEFINICJA e istnieje w X:
+  (znaleziono, pozycja) := X.znajdź_element(e)
+  ZWRÓĆ znaleziono
+
+
+DEFINICJA X.dodaj(e):
+  (znaleziono, pozycja) := X.znajdź_element(X, e)
+  JEŻELI !znaleziono
+    wydłuż X o 1
+    i := |X| - 1
+    DOPÓKI i >= pozycja WYKONUJ
+      X[i+1] := X[i]
+      i := i + 1
+    X[pozycja] := e
+
+
+DEFINICJA X.usuń(e):
+  (znaleziono, pozycja) := X.znajdź_element(X, e)
+  JEŻELI znaleziono
+    pozycja := pozycja + 1
+    DOPÓKI pozycja < |X| WYKONUJ
+      X[pozycja-1] := X[pozycja]
+      pozycja := pozycja + 1
+    skróć X o 1
+
+
+DEFINICJA X + Y:
+  Z := pusty zbiór
+  i := 0
+  j := 0
+
+  DOPÓKI i < |X| ORAZ j < |Y| WYKONUJ
+
+    DOPÓKI i < |X| ORAZ X[i] < Y[j] WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+    JEŻELI i = |X|
+      PRZERWIJ
+
+    DOPÓKI j < |Y| ORAZ X[i] > Y[j] WYKONUJ
+      Z.dodaj(Y[j])
+      j := j + 1
+    JEŻELI j = |Y|
+      PRZERWIJ
+
+    JEŻELI X[i] = Y[i]
+      Z.dodaj(X[i])
+      i := i + 1
+      j := j + 1
+
+  DOPÓKI i < |X| WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+
+  DOPÓKI j < |Y| WYKONUJ
+      Z.dodaj(Y[j])
+      j := j + 1
+
+  ZWRÓĆ Z
+
+
+DEFINICJA X - Y:
+  Z := pusty zbiór
+  i := 0
+  j := 0
+
+  DOPÓKI i < |X| ORAZ j < |Y| WYKONUJ
+
+    DOPÓKI i < |X| ORAZ X[i] < Y[j] WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+    JEŻELI i = |X|
+      PRZERWIJ
+
+    DOPÓKI j < |Y| ORAZ X[i] > Y[j] WYKONUJ
+      j := j + 1
+    JEŻELI j = |Y|
+      PRZERWIJ
+
+    JEŻELI X[i] = Y[i]
+      i := i + 1
+      j := j + 1
+
+  DOPÓKI i < |X| WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+
+  ZWRÓĆ Z
+
+
+DEFINICJA X * Y:
+  Z := pusty zbiór
+  i := 0
+  j := 0
+
+  DOPÓKI i < |X| ORAZ j < |Y| WYKONUJ
+
+    DOPÓKI i < |X| ORAZ X[i] < Y[j] WYKONUJ
+      i := i + 1
+    JEŻELI i = |X|
+      PRZERWIJ
+
+    DOPÓKI j < |Y| ORAZ X[i] > Y[j] WYKONUJ
+      j := j + 1
+    JEŻELI j = |Y|
+      PRZERWIJ
+
+    JEŻELI X[i] = Y[i]
+      Z.dodaj(X[i])
+      i := i + 1
+      j := j + 1
+
+  ZWRÓĆ Z
+
+
+DEFINICJA X ^ Y:
+  Z := pusty zbiór
+  i := 0
+  j := 0
+
+  DOPÓKI i < |X| ORAZ j < |Y| WYKONUJ
+
+    DOPÓKI i < |X| ORAZ X[i] < Y[j] WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+    JEŻELI i = |X|
+      PRZERWIJ
+
+    DOPÓKI j < |Y| ORAZ X[i] > Y[j] WYKONUJ
+      Z.dodaj(Y[j])
+      j := j + 1
+    JEŻELI j = |Y|
+      PRZERWIJ
+
+    JEŻELI X[i] = Y[i]
+      i := i + 1
+      j := j + 1
+
+  DOPÓKI i < |X| WYKONUJ
+      Z.dodaj(X[i])
+      i := i + 1
+
+  DOPÓKI j < |Y| WYKONUJ
+      Z.dodaj(Y[j])
+      j := j + 1
+
+  ZWRÓĆ Z
+\endverbatim
+
+
+\subsection alg_relation Klasa Relation
+
+Operacje podstawowe takie jak dodawanie i usuwanie elementów,
+dodawanie i odejmowanie relacji, znajdowanie części wspólnej i różnicy
+relacji są delegowane do klasy \link mina86::Set Set\endlink.
+Pozostają metody sprawdzające różne właściwości relacji.
+
+Klasa posiada metody służące do wyliczania obrazu oraz przeciwobrazu
+danego elementu.  Złożoność algorytmów użytych w tych metodach to
+odpowiednio <code>O(m + log n)</code> oraz <code>O(n)</code>, gdzie \a
+n to liczba elementów w grafie relacji, a \a m to liczba elementów w
+obrazie.  Oto wykorzystane algorytmy:
+
+\verbatim
+DEFINICJA obraz e:
+  znaleziono := fałsz
+  od := 0
+  do := |G|
+  DOPÓKI od < do WYKONUJ
+    środek := (od + do) / 2
+    JEŻELI G[środek].poprzednik = e
+      do := środek
+      i := środek
+      znaleziono := prawda
+    WPP JEŻELI G[środek].poprzednik > e
+      do := środek
+    WPP
+      od := środek + 1
+  JEŻELI !znaleziono
+    ZWRÓĆ pusty zbiór
+
+  Z := pusty zbiór
+  WYKONUJ
+    Z.dodaj(G[i].następnik)
+    i := i + 1
+  DOPÓKI i < |G| ORAZ G[i].poprzednik = e
+  ZWRÓĆ Z
+
+
+DEFINICJA przeciwobraz e:
+  Z := pusty zbiór
+  i := 0
+  DOPÓKI i < |G| WYKONUJ
+    JEŻELI G[i].następnik = e
+      Z.dodaj(G[i].poprzednik)
+    i := i + 1
+  ZWRÓĆ Z
+\endverbatim
+
+Ponadto, zgodnie z założeniami, klasa umożliwia sprawdzanie różnych
+własności relacji.  Należy zaznaczyć, że w klasie przechowywane są
+flagi oznaczające, czy dana własność została już sprawdzona i jeżeli
+tak to czy relacja ją posiada.  Flagi te są czyszczone po
+jakiejkolwiek modyfikacji relacji.  Pozwala to zaoszczędzić sporo
+czasu, przy wielokrotnym sprawdzaniu tej samej własności.
+
+Własności możliwe do sprawdzania (niech \a G oznacza graf, \a X
+dziedzinę; \a Y przeciwdziedzinę; \c xRy że element \a x jest w
+relacji z \a y):
+
+ - left-total
+   - dla każdego \a x z \a X istnieje \a y z \a Y taki, że \c xRy
+   - złożoność <code>O(|G| + |X|)</code>
+   - ponieważ elementy w grafie uporządkowane są w porządku leksykalnym
+     i porządek pierwszego elementu pary jest taki sam jak porządek w
+     dziedzinie, poniższy algorytm okazuje się działać:
+
+\verbatim
+i := 0
+j := 0
+DOPÓKI i < |X| ORAZ j < |G| WYKONUJ
+  DOPÓKI j < |G| ORAZ G[j].poprzednik != X[i] WYKONUJ
+    j := j + 1
+  i := i + 1
+ZWRÓĆ j < |G|
+\endverbatim
+
+ - right-total
+    - dla każdego \a y z \a Y istnieje \a x z \a X taki, że \c xRy
+    - złożoność <code>O(|G| * |Y|)</code>
+    - następniki w grafie nie są już uporządkowane toteż należało użyć
+      innego algorytmu:
+
+\verbatim
+Z := Y
+i := 0
+DOPÓKI i < |G| ORAZ Z jest niepusty WYKONUJ
+  Z.usuń(G[i].następnik)
+  i := i + 1
+ZWRÓĆ Z jest pusty
+\endverbatim
+
+  - functional
+    - dla każdego \a x z \a X oraz \a y i \a z z \a Y, jeżeli \c xRy
+      oraz \c xRz to <code>y = z</code>
+    - złożoność <code>O(|G|)</code>
+    - ponieważ poprzedniki w grafie są posortowane wystarczy sprawdzić
+      czy w grafie nie występują obok siebie pary o takich samych
+      następnikach, czyli:
+
+\verbatim
+JEŻELI |G| < 2
+  ZWRÓĆ prawda
+i := 1
+DOPÓKI i < |G| ORAZ G[i].poprzednik != G[i-1].poprzednik WYKONUJ
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - surjective (surjekcja)
+    - to samo co right-total
+
+  - injective (injekcja)
+    - dla każdego \a x i \a z z \a X oraz \a y z \a Y, jeżeli \c xRy
+      oraz \c zRy to <code>x = z</code>
+    - złożoność <code>O(|G| * |Y|)</code>
+    - ponieważ następniki nie są posortowane w grafie, należało użyć
+      następującego algorytmu:
+
+\verbatim
+Z := pusty zbiór
+i := 0
+DOPÓKI i < |G| ORAZ Z nie zawiera G[i].następnik WYKONUJ
+  Z.dodaj(G[i].następnik)
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - bijective (bijekcja)
+    - sprowadza się do sprawdzenia left-total, right-total i functional
+
+Poniższe własności wymagają żeby <code>X = Y</code> i w opisie nie
+będzie to już powtarzane, tylko przyjęte za założenie.
+
+  - reflexive (relacja zwrotna)
+    - dla każdego \a x z \a X zachodzi \c xRx
+    - złożoność <code>O(|G|)</code>
+    - dzięki uporządkowaniu par można skorzystać z poniższego
+      algorytmu:
+
+\verbatim
+i := 0
+j := 0
+DOPÓKI i < |X| ORAZ j < |G| WYKONUJ
+  P := para(X[i], X[i])
+  DOPÓKI j < |G| ORAZ G[j] < P WYKONUJ
+    j := j + 1
+  JEŻELI j != |G| ORAZ P != G[j]
+    j := |G|
+ZWRÓĆ j < |G|
+\endverbatim
+
+  - irreflexive
+    - dla każdego \a x z \a X nie zachodzi \c xRx
+    - złożoność <code>O(|G|)</code>
+    - dzięki uporządkowaniu par można skorzystać z poniższego
+      algorytmu:
+
+\verbatim
+i := 0
+j := 0
+DOPÓKI i < |X| ORAZ j < |G| WYKONUJ
+  P := para(X[i], X[i])
+  DOPÓKI j < |G| ORAZ G[j] < P WYKONUJ
+    j := j + 1
+  JEŻELI j != |G| ORAZ P = G[j]
+    j := |G|
+ZWRÓĆ j < |G|
+\endverbatim
+
+  - coreflexive
+    - dla każdego \a x oraz \a y z \a X, jeżeli \c xRy to <code>x =
+      y</code>
+    - złożoność <code>O(|G|)</code>
+    - algorytm sprowadza się do prostego iterowania po całym grafie i
+      sprawdzenia czy poprzednik jest równy następnikowi w każdym
+      elemencie grafu:
+
+\verbatim
+i := 0
+DOPÓKI i < |G| ORAZ G[i].poprzednik != G[i].następnik WYKONUJ
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - symetric (relacja symetryczna)
+    - dla każdego \a x oraz \a y z \a X, jeżeli \c xRy to również \c
+      yRx
+    - złożoność <code>O(|G| * log |G|)</code>
+    - własność sprawdza poniższy algorytm:
+
+\verbatim
+i := 0
+DOPÓKI i < |G| ORAZ
+       para(G[i].następnik, G[i].poprzednik) istnieje w G
+WYKONUJ
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - antisymmetric (relacja antysymetryczna)
+    - dla każdego \a x oraz \a y z \a X, jeżeli \c xRy oraz \c yRx to
+      <code>x = y</code>
+    - złożoność <code>O(|G| * log |G|)</code>
+    - algorytm realizujący sprawdzenie:
+
+\verbatim
+i := 0
+DOPÓKI i < |G| ORAZ
+       (G[i].poprzednik != G[i].następnik LUB
+        para(G[i].następnik, G[i].poprzednik) nie istnieje w G)
+WYKONUJ
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - asymetric (relacja asymetryczna)
+    - dla każdego \a x oraz \a y z \a X, jeżeli \c xRy to nie \c yRx
+    - złożoność <code>O(|G| * log |G|)</code>
+    - algorytm realizujący sprawdzenie:
+
+\verbatim
+i := 0
+DOPÓKI i < |G| ORAZ
+       para(G[i].następnik, G[i].poprzednik) nie istnieje w G
+WYKONUJ
+  i := i + 1
+ZWRÓĆ i = |G|
+\endverbatim
+
+  - trasitive (relacja przechodnia)
+    - dla każdego \a x, \a y oraz \a z z \a X, jeżeli \c xRy oraz \c
+      yRz to \c xRz
+    - złożoność <code>O(|G|^2 * log |G|)</code>
+    - ponownie uporządkowanie elementów w grafie przyśpiesza algorytm:
+
+\verbatim
+i := 0
+DOPÓKI i < |G| WYKONUJ
+
+  znaleziono := fałsz
+  od := 0
+  do := |G|
+  DOPÓKI od < do WYKONUJ
+    środek := (od + do) / 2
+    JEŻELI G[środek].poprzednik = G[i].następnik
+      do := środek
+      j := środek
+      znaleziono := prawda
+    WPP JEŻELI G[środek].poprzednik > G[i].następnik
+      do := środek
+    WPP
+      od := środek + 1
+
+  JEŚLI znaleziono
+    WYKONUJ
+      JEŻELI para(G[i].poprzednik, G[j].następnik) nie istnieje w G
+        ZWRÓĆ fałsz
+      j := j + 1
+    DOPÓKI j < |G| ORAZ G[i].następnik = G[j].poprzednik
+
+ZWRÓĆ prawda
+\endverbatim
+
+  - total (relacja zupełna) lub linear (relacja liniowa)
+    - dla każdego \a x oraz \a y z \a X zachodzi \c xRy lub \c yRx
+    - złożoność <code>O(|X|^2 * log |G|)</code>
+    - algorytm realizujący sprawdzenie:
+
+\verbatim
+i := 0
+DOPÓKI i < |X| WYKONUJ
+  j := i
+  DOPÓKI j < |X| WYKONUJ
+    JEŻELI para(X[i], X[j]) nie istnieje w G ORAZ
+           para(X[j], X[i]) nie istnieje w G
+      ZWRÓĆ fałsz
+    j := j + 1
+  i := i + 1
+ZWRÓĆ prawda
+\endverbatim
+
+  - trichotomous (relacja trychotomiczna)
+    - dla każdego \a x oraz \a y zachodzi dokładnie jedno z \c xRy, \c
+      yRx albo <code>x = y</code>
+    - złożoność <code>O(|X|^2 * log |G|)</code>
+    - algorytm realizujący sprawdzenie:
+
+\verbatim
+i := 0
+DOPÓKI i < |X| WYKONUJ
+  j := i
+  DOPÓKI j < |X| WYKONUJ
+    licznik := 0
+    JEŻELI para(X[i], X[j]) istnieje w G
+      licznik := licznik + 1
+    JEŻELI para(X[j], X[i]) istnieje w G
+      licznik := licznik + 1
+    JEŻELI X[i] == X[j]
+      licznik := licznik + 1
+    JEŻELI licznik != 1
+      ZWRÓĆ fałsz
+    j := j + 1
+  i := i + 1
+ZWRÓĆ prawda
+\endverbatim
+
+  - euclidean
+    - dla każdego \a x, \a y oraz \a z z \a X, jeżeli \c xRy oraz \c
+      xRz to \c yRz
+    - złożoność <code>O(|X| * |G|^2)</code>
+
+\verbatim
+i := 0
+DOPÓKI i < |X| WYKONUJ
+  Z := obraz X[i]
+  j := 0
+  DOPÓKI j < |Z| WYKONUJ
+    k := 0
+    DOPÓKI k < |Z| ORAZ para(Z[j], Z[k]) istnieje w G WYKONUJ
+      k := k + 1
+    JEŻELI k != |Z|
+      ZWRÓĆ fałsz
+    j := j + 1
+  i := i + 1
+ZWRÓĆ prawda
+\endverbatim
+
+  - extendable lub serial
+    - to samo co left-total
+
+  - preorder lub quasiorder (quasiporządek)
+    - sprowadza się do sprawdzenia czy relacja jest zwrotna i
+      przechodnia
+
+  - equivalence (relacja równoważności)
+    - sprowadza się do sprawdzenia czy relacja jest zwrotna,
+      przechodnia i symetryczna
+
+  - partial order (częściowy porządek)
+    - sprowadza się do sprawdzenia czy relacja jest zwrotna,
+      przechodnia i antysymetryczna.
+
+  - total order (zupełny porządek) lub linear order (porządek liniowy)
+    - sprowadza się do sprawdzenia czy relacja jest liniowa oraz czy
+      jest częściowym porządkiem
+
+
+\section test Testy
+
+Projekt posiada narzędzia do automatycznego testowania części z
+funkcjonalności klas.  Najprostszym sposobem na ich użycie jest
+wywołanie polecenia <code>make test</code>.
+
+Pierwszym narzędziem jest tester kalkulatora odwrotnej notacji
+polskiej operującego na arytmetyce dużych liczb zaimplementowanej w
+klasie \link mina86::BigInt BigInt\endlink.  Klasa ta, jak również i
+sam kalkulator, używa klasy \link mina86::Array Array\endlink zatem
+poprawny wynik testu uzależniony jest od poprawnego działania
+wspomnianej klasy.
+
+Operacja testująca polega na wygenerowaniu 10 tysięcy losowych działań
+arytmetycznych na liczbach wielkości do 20 cyfr i porównaniu wyników
+jakie daje \c bc i testowany program.
+
+Drugim narzędziem jest tester programów \c is_expr oraz \c bis_expr
+służących do wykonywania operacji na zbiorach liczb.  Programy te
+wykorzystują do działania klasę \link mina86::Set Set\endlink zatem
+poprawny wynik testu wymaga poprawnego działania tej klasy.
+
+Pojedynczy test polega na wygenerowaniu dwóch zbiorów o liczbie
+elementów z zakresu [100, 1100], wyliczeniu sumy, różnicy, części
+wspólnej oraz różnicy symetrycznej tych zbiorów i sprawdzeniu czy
+różne własności mocy tych zbiorów są zachowane.  Taki pojedynczy test
+powtarzany jest stukrotnie dla \c is_expr oraz \c bis_expr.
+
+Klasa \link mina86::Relation Relation\endlink nie posiada
+zautomatyzowanego programu testującego.  Istnieje jednak program \c
+rel-demo demonstrujący działanie klasy.  Umożliwia on zdefiniowanie
+dwóch relacji (podając dziedzinę, przeciwdziedzinę oraz zbiór relacji,
+tj. graf relacji), oblicza sumę, różnicę, część wspólną i różnicę
+symetryczną tych relacji i na koniec sprawdza poszczególne własności
+danych relacji.
+
+*/

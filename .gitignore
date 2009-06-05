@@ -1,0 +1,5 @@
+*.o *~ #* *.bak core
+in.* out.* s.*
+make-in gen-set
+rpn *_expr rel-demo
+doc
